@@ -13,7 +13,6 @@ import {
   CompletionItem,
   CompletionItemKind,
   createConnection,
-  DidChangeConfigurationNotification,
   InitializeParams,
   InitializeResult,
   InsertTextFormat,
@@ -28,27 +27,7 @@ let connection = createConnection(ProposedFeatures.all);
 // Create a simple text document manager.
 let documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
-let hasConfigurationCapability: boolean = false;
-let hasWorkspaceFolderCapability: boolean = false;
-let hasDiagnosticRelatedInformationCapability: boolean = false;
-
-connection.onInitialize((params: InitializeParams) => {
-  let capabilities = params.capabilities;
-
-  // Does the client support the `workspace/configuration` request?
-  // If not, we fall back using global settings.
-  hasConfigurationCapability = !!(
-    capabilities.workspace && !!capabilities.workspace.configuration
-  );
-  hasWorkspaceFolderCapability = !!(
-    capabilities.workspace && !!capabilities.workspace.workspaceFolders
-  );
-  hasDiagnosticRelatedInformationCapability = !!(
-    capabilities.textDocument &&
-    capabilities.textDocument.publishDiagnostics &&
-    capabilities.textDocument.publishDiagnostics.relatedInformation
-  );
-
+connection.onInitialize((_params: InitializeParams) => {
   const triggerCharacters = [
     ">",
     ")",
@@ -59,7 +38,7 @@ connection.onInitialize((params: InitializeParams) => {
     "*",
     "$",
     "+",
-    
+
     // alpha
     "a",
     "b",
@@ -111,29 +90,7 @@ connection.onInitialize((params: InitializeParams) => {
       },
     },
   };
-  if (hasWorkspaceFolderCapability) {
-    result.capabilities.workspace = {
-      workspaceFolders: {
-        supported: true,
-      },
-    };
-  }
   return result;
-});
-
-connection.onInitialized(() => {
-  if (hasConfigurationCapability) {
-    // Register for all configuration changes.
-    connection.client.register(
-      DidChangeConfigurationNotification.type,
-      undefined
-    );
-  }
-  if (hasWorkspaceFolderCapability) {
-    connection.workspace.onDidChangeWorkspaceFolders((_event) => {
-      connection.console.log("Workspace folder change event received.");
-    });
-  }
 });
 
 interface Settings {
@@ -141,13 +98,11 @@ interface Settings {
   css_filetypes: string[],
 }
 
-// The global settings, used when the `workspace/configuration` request is not supported by the client.
-// Please note that this is not the case when using this server with the client provided in this example
-// but could happen with other clients.
 const defaultSettings: Settings = {
     html_filetypes: ['html'],
     css_filetypes: ['css'],
 };
+
 let globalSettings: Settings = defaultSettings;
 
 // Cache the settings of all open documents
@@ -156,21 +111,6 @@ let documentSettings: Map<string, Thenable<Settings>> = new Map();
 connection.onDidChangeConfiguration((change) => {
       globalSettings = <Settings>change.settings;
 });
-
-function getDocumentSettings(resource: string): Thenable<Settings> {
-  if (!hasConfigurationCapability) {
-    return Promise.resolve(globalSettings);
-  }
-  let result = documentSettings.get(resource);
-  if (!result) {
-    result = connection.workspace.getConfiguration({
-      scopeUri: resource,
-      section: "languageServerExample",
-    });
-    documentSettings.set(resource, result);
-  }
-  return result;
-}
 
 function getCssSnippet(abbreviation: string) {
   const cssConfig = resolveConfig({
